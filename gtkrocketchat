@@ -1,0 +1,94 @@
+#! /usr/bin/gjs
+
+const Gtk = imports.gi.Gtk;
+const Lang = imports.lang;
+
+const GLib = imports.gi.GLib;
+const Webkit = imports.gi.WebKit2; 
+const Rocketchat = new Lang.Class({
+  Name: 'Rocketchat',
+  _init: function () {
+    this.application = new Gtk.Application ();
+
+    this.application.connect('activate', Lang.bind(this, this._onActivate));
+    this.application.connect('startup', Lang.bind(this, this._onStartup));
+  },
+  
+ _onActivate: function() {
+    this._window.present();
+ } ,
+
+ _onStartup: function() {
+    this._buildUI();
+ },
+
+ _buildUI: function() {
+    this._window = new Gtk.ApplicationWindow({
+      application: this.application,
+      title: "Rocket Chat",
+      default_height: 800 * 1.25,
+      default_width: 800 * 1.25,
+      window_position: Gtk.WindowPosition.CENTER
+    });
+
+    this._webView = new Webkit.WebView();
+    this._cookieManager = this._webView.get_context().get_cookie_manager()
+
+    this._cookieManager.set_persistent_storage('cookie.txt', Webkit.CookiePersistentStorage.TEXT)
+
+    this._cookieManager.connect('changed', function (cookieManager) {
+      print('cookie changed')
+    })
+
+    this._webView.load_uri ("https://chat.chaitin.cn") ;
+    // this._webView.load_uri ("https://html5test.com/index.html") ;
+
+    this._webView.connect('permission-request', function (webView, request) {
+      return true;
+    });
+
+    this._webView.connect('load-changed', Lang.bind(this, function (webView, event) {
+      print('load-uri: ', webView.get_uri(), event)
+      if (webView.get_uri() === 'https://chat.chaitin.cn/_saml/validate/google') {
+        print('login success')
+      }
+    }));
+
+    this._webView.connect('create', Lang.bind(this, function (webView, action, data) {
+      // webView.load_uri(action.get_request().get_uri())
+      this._loginWindow = new Gtk.Window();
+      this.application.add_window(this._loginWindow)
+      var loginView;
+      loginView = new Webkit.WebView()
+      print('login page', action.get_request().get_uri())
+      loginView.load_uri(action.get_request().get_uri())
+      this._loginWindow.add(loginView)
+      this._loginWindow.show_all()
+
+      loginView.connect('load-changed', Lang.bind(this, function (webView, event) {
+        print('load-uri: ', webView.get_uri(), event)
+        if (event === Webkit.LoadEvent.COMMITED && webView.get_uri() === 'https://chat.chaitin.cn/_saml/validate/google') {
+          print('login success')
+        }
+      }));
+
+      loginView.connect('close', Lang.bind(this, function () {
+        loginView.try_close ()
+      	this._loginWindow.close();
+      }));
+      return loginView;
+    }));
+
+    this._webView.connect('resource-load-started', Lang.bind(this, function (webView, _, request) {
+      print ('resource:', request.get_uri());
+    }));
+
+    // Put the webview into window
+    this._window.add (this._webView);
+
+    this._window.show_all();
+ },
+});
+
+let app = new Rocketchat();
+app.application.run (ARGV);

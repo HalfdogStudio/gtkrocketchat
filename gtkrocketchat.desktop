@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+Name=GtkRocketChat
+Comment=Rocket Chat GTK桌面版
+Exec=/home/reverland/.local/bin/gtkrocketchat
+Icon=/home/reverland/.local/share/applications/rocketchat.svg
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Network;
