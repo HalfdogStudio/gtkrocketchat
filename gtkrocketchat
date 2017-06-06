@@ -5,6 +5,9 @@ const Lang = imports.lang;
 
 const GLib = imports.gi.GLib;
 const Webkit = imports.gi.WebKit2; 
+const Notify = imports.gi.Notify;
+Notify.init('Rocketchat');
+
 const Rocketchat = new Lang.Class({
   Name: 'Rocketchat',
   _init: function () {
@@ -44,6 +47,7 @@ const Rocketchat = new Lang.Class({
     // this._webView.load_uri ("https://html5test.com/index.html") ;
 
     this._webView.connect('permission-request', function (webView, request) {
+      request.allow();
       return true;
     });
 
@@ -89,7 +93,7 @@ const Rocketchat = new Lang.Class({
                 print('estimated-progress', download['estimated-progress'])
                 // TODO: notify download
                 print('destination: ', download.get_destination())
-                download.set_allow_overwrite(true)
+                // download.set_allow_overwrite(true)
               }))
               download.connect('created-destination', Lang.bind(this, function (download, filename) {
                 print('created-destination')
@@ -108,6 +112,11 @@ const Rocketchat = new Lang.Class({
                 print('download-allow: ', download['allow-overwrite'])
                 print('estimated-progress', download['estimated-progress'])
                 loginView.try_close();
+		let notify = new Notify.Notification({
+		  summary: 'file downloaded' ,
+		  body: download.get_destination() + ' download success'
+		})
+		notify.show()
               }))
               download.connect('received-data', Lang.bind(this, function (download, length) {
                 print('received-data', length)
