@@ -56,7 +56,12 @@ const Rocketchat = new Lang.Class({
 
     this._webView.connect('create', Lang.bind(this, function (webView, action, data) {
       // webView.load_uri(action.get_request().get_uri())
-      this._loginWindow = new Gtk.Window();
+      print(action.get_navigation_type())
+      this._loginWindow = new Gtk.Window({
+        default_height: 800 * 1.25,
+        default_width: 800 * 1.25,
+        window_position: Gtk.WindowPosition.CENTER
+      });
       this.application.add_window(this._loginWindow)
       var loginView;
       loginView = new Webkit.WebView()
@@ -70,6 +75,51 @@ const Rocketchat = new Lang.Class({
         if (event === Webkit.LoadEvent.COMMITED && webView.get_uri() === 'https://chat.chaitin.cn/_saml/validate/google') {
           print('login success')
         }
+      }));
+
+      loginView.connect('decide-policy', Lang.bind(this, function (webView, decision, type) {
+        switch (type) {
+          case Webkit.PolicyDecisionType.RESPONSE:
+            if (!decision.is_mime_type_supported()) {
+              decision.download()
+              var download = loginView.download_uri(decision.get_request().get_uri())
+              download.connect('decide-destination', Lang.bind(this, function (download, filename) {
+                print('download-file: ', filename)
+                print('download-allow: ', download['allow-overwrite'])
+                print('estimated-progress', download['estimated-progress'])
+                // TODO: notify download
+                print('destination: ', download.get_destination())
+                download.set_allow_overwrite(true)
+              }))
+              download.connect('created-destination', Lang.bind(this, function (download, filename) {
+                print('created-destination')
+                print('download-file: ', filename)
+                print('download-allow: ', download['allow-overwrite'])
+                print('estimated-progress', download['estimated-progress'])
+              }))
+              download.connect('failed', Lang.bind(this, function (download, error) {
+                print('failed')
+                print('error: ', error, error.code)
+                print('download-allow: ', download['allow-overwrite'])
+                print('estimated-progress', download['estimated-progress'])
+              }))
+              download.connect('finished', Lang.bind(this, function (download, filename) {
+                print('finished')
+                print('download-allow: ', download['allow-overwrite'])
+                print('estimated-progress', download['estimated-progress'])
+                loginView.try_close();
+              }))
+              download.connect('received-data', Lang.bind(this, function (download, length) {
+                print('received-data', length)
+              }))
+            } else {
+              decision.use();
+            }
+            break;
+          default:
+            return false;
+        }
+        return true;
       }));
 
       loginView.connect('close', Lang.bind(this, function () {
