@@ -23,7 +23,7 @@ const RocketChatWindow = new Lang.Class({
         this.parent({
             title: 'GtkRocket'
         });
-        this.set_size_request(800, 800);
+        this.set_size_request(800, 600);
         this._app = app;
         this._buildUI(uri);
     },
@@ -47,6 +47,7 @@ const RocketChatWindow = new Lang.Class({
             const window = new RocketChatWindow(this._app, uri);
             window._webView.connect('close', Lang.bind(this, _ => {
                 window._webView.try_close();
+                window.close();
             }));
             return window._webView;
         }
@@ -59,9 +60,17 @@ const RocketChatWindow = new Lang.Class({
                 if (
                     decision.get_response().get_mime_type() !== 'text/html'
                 ) {
+                    // close window first
+                    this.close();
                     decision.download();
                     const download = CONTEXT.download_uri(decision.get_request().get_uri());
                     download.set_allow_overwrite(true);
+                    // notify download
+                    let notify = new Notify.Notification({
+                                            summary: 'starting file downloaded',
+                                            body: decision.get_request().get_uri()
+                    })
+                    notify.show()
 
                     download.connect('failed', function (download, error) {
                         let notify = new Notify.Notification({
@@ -77,7 +86,6 @@ const RocketChatWindow = new Lang.Class({
                                             body: download.get_destination() + ' download success'
                         })
                         notify.show();
-                        this.close();
                     }));
                 } else {
                     decision.use();
