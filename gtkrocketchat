@@ -4,150 +4,104 @@ const Gtk = imports.gi.Gtk;
 const Lang = imports.lang;
 
 const GLib = imports.gi.GLib;
-const Webkit = imports.gi.WebKit2; 
+const WebKit2 = imports.gi.WebKit2; 
 const Notify = imports.gi.Notify;
-Notify.init('Rocketchat');
+Notify.init('GTKRocketChat');
 
-const Rocketchat = new Lang.Class({
-  Name: 'Rocketchat',
-  _init: function () {
-    this.application = new Gtk.Application ();
+Gtk.init(null);
 
-    this.application.connect('activate', Lang.bind(this, this._onActivate));
-    this.application.connect('startup', Lang.bind(this, this._onStartup));
-  },
-  
- _onActivate: function() {
-    this._window.present();
- } ,
+let app;
 
- _onStartup: function() {
-    this._buildUI();
- },
+const CONTEXT = new WebKit2.WebContext();
+CONTEXT.get_cookie_manager().set_persistent_storage('cookie.txt', WebKit2.CookiePersistentStorage.TEXT);
 
- _buildUI: function() {
-    this._window = new Gtk.ApplicationWindow({
-      application: this.application,
-      title: "Rocket Chat",
-      default_height: 800 * 1.25,
-      default_width: 800 * 1.25,
-      window_position: Gtk.WindowPosition.CENTER
-    });
+const RocketChatWindow = new Lang.Class({
+    Name: 'RocketChatWindow',
+    Extends: Gtk.ApplicationWindow,
 
-    this._webView = new Webkit.WebView();
-    this._cookieManager = this._webView.get_context().get_cookie_manager()
+    _init: function(app, uri) {
+        this.parent({
+            title: 'GtkRocket'
+        });
+        this.set_size_request(800, 800);
+        this._app = app;
+        this._buildUI(uri);
+    },
 
-    this._cookieManager.set_persistent_storage('cookie.txt', Webkit.CookiePersistentStorage.TEXT)
+    _buildUI: function(uri) {
+        this._webView = WebKit2.WebView.new_with_context(CONTEXT);
+        this._webView.load_uri(uri);
+        this._webView.connect('permission-request', function (webView, request) {
+            request.allow();
+            return true;
+        });
+        this._webView.connect('create', Lang.bind(this, this._onCreateWindow));
+        this._webView.connect('decide-policy', Lang.bind(this, this._onDecidePolicy));
+        this.add(this._webView);
+        this.show_all();
+    },
 
-    this._cookieManager.connect('changed', function (cookieManager) {
-      print('cookie changed')
-    })
-
-    this._webView.load_uri ("https://chat.chaitin.cn") ;
-    // this._webView.load_uri ("https://html5test.com/index.html") ;
-
-    this._webView.connect('permission-request', function (webView, request) {
-      request.allow();
-      return true;
-    });
-
-    this._webView.connect('load-changed', Lang.bind(this, function (webView, event) {
-      print('load-uri: ', webView.get_uri(), event)
-      if (webView.get_uri() === 'https://chat.chaitin.cn/_saml/validate/google') {
-        print('login success')
-      }
-    }));
-
-    this._webView.connect('create', Lang.bind(this, function (webView, action, data) {
-      // webView.load_uri(action.get_request().get_uri())
-      print(action.get_navigation_type())
-      this._loginWindow = new Gtk.Window({
-        default_height: 800 * 1.25,
-        default_width: 800 * 1.25,
-        window_position: Gtk.WindowPosition.CENTER
-      });
-      this.application.add_window(this._loginWindow)
-      var loginView;
-      loginView = new Webkit.WebView()
-      print('login page', action.get_request().get_uri())
-      loginView.load_uri(action.get_request().get_uri())
-      this._loginWindow.add(loginView)
-      this._loginWindow.show_all()
-
-      loginView.connect('load-changed', Lang.bind(this, function (webView, event) {
-        print('load-uri: ', webView.get_uri(), event)
-        if (event === Webkit.LoadEvent.COMMITED && webView.get_uri() === 'https://chat.chaitin.cn/_saml/validate/google') {
-          print('login success')
+    _onCreateWindow: function(webView, action) {
+        if (action.is_user_gesture()) {
+            const uri = action.get_request().get_uri();
+            const window = new RocketChatWindow(this._app, uri);
+            window._webView.connect('close', Lang.bind(this, _ => {
+                window._webView.try_close();
+            }));
+            return window._webView;
         }
-      }));
+    },
 
-      loginView.connect('decide-policy', Lang.bind(this, function (webView, decision, type) {
+    _onDecidePolicy: function(webView, decision, type) {
         switch (type) {
-          case Webkit.PolicyDecisionType.RESPONSE:
-            if (!decision.is_mime_type_supported()) {
-              decision.download()
-              var download = loginView.download_uri(decision.get_request().get_uri())
-              download.connect('decide-destination', Lang.bind(this, function (download, filename) {
-                print('download-file: ', filename)
-                print('download-allow: ', download['allow-overwrite'])
-                print('estimated-progress', download['estimated-progress'])
-                // TODO: notify download
-                print('destination: ', download.get_destination())
-                // download.set_allow_overwrite(true)
-              }))
-              download.connect('created-destination', Lang.bind(this, function (download, filename) {
-                print('created-destination')
-                print('download-file: ', filename)
-                print('download-allow: ', download['allow-overwrite'])
-                print('estimated-progress', download['estimated-progress'])
-              }))
-              download.connect('failed', Lang.bind(this, function (download, error) {
-                print('failed')
-                print('error: ', error, error.code)
-                print('download-allow: ', download['allow-overwrite'])
-                print('estimated-progress', download['estimated-progress'])
-              }))
-              download.connect('finished', Lang.bind(this, function (download, filename) {
-                print('finished')
-                print('download-allow: ', download['allow-overwrite'])
-                print('estimated-progress', download['estimated-progress'])
-                loginView.try_close();
-		let notify = new Notify.Notification({
-		  summary: 'file downloaded' ,
-		  body: download.get_destination() + ' download success'
-		})
-		notify.show()
-              }))
-              download.connect('received-data', Lang.bind(this, function (download, length) {
-                print('received-data', length)
-              }))
-            } else {
-              decision.use();
-            }
-            break;
-          default:
-            return false;
+            case WebKit2.PolicyDecisionType.RESPONSE:
+                // print(decision.get_response().get_mime_type());
+                if (
+                    decision.get_response().get_mime_type() !== 'text/html'
+                ) {
+                    decision.download();
+                    const download = CONTEXT.download_uri(decision.get_request().get_uri());
+                    download.set_allow_overwrite(true);
+
+                    download.connect('failed', function (download, error) {
+                        let notify = new Notify.Notification({
+                                            summary: 'file downloaded fail',
+                                            body: download.get_destination() + ' download fail' + error + ' ' + error.code
+                        })
+                        notify.show()
+                    });
+
+                    download.connect('finished', Lang.bind(this, function(download, filename) {
+                        let notify = new Notify.Notification({
+                                            summary: 'file downloaded',
+                                            body: download.get_destination() + ' download success'
+                        })
+                        notify.show();
+                        this.close();
+                    }));
+                } else {
+                    decision.use();
+                }
+                break;
+            default:
+                return false;
         }
         return true;
-      }));
-
-      loginView.connect('close', Lang.bind(this, function () {
-        loginView.try_close ()
-      	this._loginWindow.close();
-      }));
-      return loginView;
-    }));
-
-    this._webView.connect('resource-load-started', Lang.bind(this, function (webView, _, request) {
-      print ('resource:', request.get_uri());
-    }));
-
-    // Put the webview into window
-    this._window.add (this._webView);
-
-    this._window.show_all();
- },
+    }
 });
 
-let app = new Rocketchat();
-app.application.run (ARGV);
+
+const RocketChat = new Lang.Class({
+    Name: 'RocketChat',
+    Extends: Gtk.Application,
+
+    _init: function() {
+        this._mainWidow = new RocketChatWindow(this, 'https://chat.chaitin.cn/');
+        this._mainWidow.connect('delete-event', Gtk.main_quit);
+    }
+});
+
+
+app = new RocketChat();
+
+Gtk.main();
